@@ -1,0 +1,67 @@
+name: Update Submodules
+
+on:
+  schedule:
+    # 매월 1일 00:00 UTC
+    - cron: "0 0 1 * *"
+  workflow_dispatch: # 수동 실행 지원
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-submodules:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update submodules to latest
+        run: |
+          git submodule update --remote --merge
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if git diff --quiet; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create Pull Request
+        if: steps.changes.outputs.has_changes == 'true'
+        id: create-pr
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: update submodules to latest"
+          branch: chore/update-submodules
+          delete-branch: true
+          title: "chore: update submodules to latest"
+          body: |
+            ## Automated Submodule Update
+
+            이 PR은 GitHub Actions에 의해 자동 생성되었습니다.
+
+            ### 업데이트된 서브모듈
+            - `.repos/A2A` → latest
+            - `.repos/agent-client-protocol` → latest
+
+            ---
+            *매월 1일 자동 실행*
+
+      - name: Auto-merge Pull Request
+        if: steps.create-pr.outputs.pull-request-number
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr merge ${{ steps.create-pr.outputs.pull-request-number }} \
+            --merge \
+            --delete-branch
